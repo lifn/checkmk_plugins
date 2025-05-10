@@ -1,0 +1,50 @@
+#!/bin/bash
+
+# File containing RAID status
+MDSTAT_FILE="/proc/mdstat"
+
+# Check if /proc/mdstat exists
+if [ ! -f "$MDSTAT_FILE" ]; then
+    echo "2 mdadm_status - CRITICAL: /proc/mdstat not found"
+    exit 2
+fi
+
+# Read the content of /proc/mdstat
+MDSTAT_CONTENT=$(cat "$MDSTAT_FILE")
+
+# Extract RAID arrays (lines starting with md followed by a digit)
+RAID_ARRAYS=$(echo "$MDSTAT_CONTENT" | grep -oP '^md\d+')
+
+if [ -z "$RAID_ARRAYS" ]; then
+    echo "0 mdadm_status - No RAID arrays detected"
+    exit 0
+fi
+
+EXIT_CODE=0
+
+for ARRAY in $RAID_ARRAYS; do
+    # Get the full line describing the array
+    ARRAY_LINE=$(echo "$MDSTAT_CONTENT" | grep "^$ARRAY")
+    
+    # Get the next line which contains disk count and status
+    STATUS_LINE=$(echo "$MDSTAT_CONTENT" | grep -A 1 "^$ARRAY" | tail -n 1)
+
+    # Extract number of expected and active devices (e.g., [2/2])
+    DEVICE_STATUS=$(echo "$STATUS_LINE" | grep -oP '\[\d+/\d+\]')
+    
+    # Extract the RAID health state (e.g., [UU])
+    HEALTH_STATUS=$(echo "$STATUS_LINE" | grep -oP '\[[U_]+\]')
+
+    # Determine RAID health
+    if [[ "$HEALTH_STATUS" == "[UU]" ]]; then
+        echo "0 mdadm_status_$ARRAY - RAID array $ARRAY is healthy ($HEALTH_STATUS)"
+    elif [[ "$HEALTH_STATUS" == *"_U"* || "$HEALTH_STATUS" == *"U_"* ]]; then
+        echo "1 mdadm_status_$ARRAY - WARNING: RAID array $ARRAY is degraded ($HEALTH_STATUS)"
+        EXIT_CODE=1
+    else
+        echo "2 mdadm_status_$ARRAY - CRITICAL: RAID array $ARRAY has a serious issue ($HEALTH_STATUS)"
+        EXIT_CODE=2
+    fi
+done
+
+exit $EXIT_CODE

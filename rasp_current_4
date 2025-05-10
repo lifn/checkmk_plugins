@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+import subprocess
+
+def get_voltage():
+    try:
+        # Run vcgencmd to get voltage
+        result = subprocess.run(["vcgencmd", "measure_volts"], capture_output=True, text=True)
+        
+        # Extract voltage value
+        if result.returncode == 0:
+            output = result.stdout.strip()
+            if output.startswith("volt="):
+                voltage = float(output.split('=')[1].replace('V', ''))
+                return voltage
+        return None
+    except Exception as e:
+        return f"ERROR: {str(e)}"
+
+def get_current():
+    # Assumed resistance value for calculating current (Ohm's Law: I = V / R)
+    # Example: 0.1 Ohm shunt resistor for measurement
+    resistance = 0.1  # Ohms
+    
+    voltage = get_voltage()
+    
+    if voltage is None:
+        return "ERROR: Unable to read voltage."
+    
+    # Calculate current in Amps: I = V / R
+    current_amps = voltage / resistance
+    
+    # Convert to milliamps
+    current_ma = current_amps * 1000
+    return current_ma
+
+def main():
+    current_ma = get_current()
+    
+    # Print Checkmk plugin format
+    #print(f"<<<rpi_current:sep(0)>>>")
+    if isinstance(current_ma, str):
+        print(f"0 {current_ma}")
+    else:
+        print(f"0 Current - {current_ma:.2f} mA")
+
+if __name__ == "__main__":
+    main()

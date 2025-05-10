@@ -1,0 +1,27 @@
+#!/bin/bash
+
+# Get the list of active RAID arrays
+RAID_ARRAYS=$(mdadm --detail --scan | awk '{print $2}')
+
+if [ -z "$RAID_ARRAYS" ]; then
+    echo "0 mdadm_status - No RAID arrays detected"
+    exit 0
+fi
+
+EXIT_CODE=0
+
+for ARRAY in $RAID_ARRAYS; do
+    STATUS=$(mdadm --detail "$ARRAY" | grep "State :" | awk -F: '{print $2}' | xargs)
+
+    if [[ "$STATUS" == "clean" || "$STATUS" == "active" ]]; then
+        echo "0 mdadm_status_$ARRAY - RAID array $ARRAY is healthy ($STATUS)"
+    elif [[ "$STATUS" == *"degraded"* ]]; then
+        echo "1 mdadm_status_$ARRAY - WARNING: RAID array $ARRAY is degraded"
+        EXIT_CODE=1
+    else
+        echo "2 mdadm_status_$ARRAY - CRITICAL: RAID array $ARRAY has issues ($STATUS)"
+        EXIT_CODE=2
+    fi
+done
+
+exit $EXIT_CODE

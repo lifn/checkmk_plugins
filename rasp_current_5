@@ -1,0 +1,64 @@
+#!/usr/bin/env python3
+import subprocess
+import re
+
+def get_adc_readings():
+    try:
+        # Run vcgencmd to get all ADC values
+        result = subprocess.run(["vcgencmd", "pmic_read_adc"], capture_output=True, text=True)
+        
+        # Check if command was successful
+        if result.returncode != 0 or not result.stdout:
+            return None, "ERROR: Unable to read ADC values."
+
+        # Parse all voltage and current values
+        voltage_pattern = re.compile(r"(vout\d*):\s*([\d.]+)V")
+        current_pattern = re.compile(r"(iout\d*):\s*([\d.]+)A")
+
+        # Find matches
+        voltage_matches = voltage_pattern.findall(result.stdout)
+        current_matches = current_pattern.findall(result.stdout)
+
+        # Combine voltage and current values into a dictionary
+        readings = {}
+        for i, (v_label, v_value) in enumerate(voltage_matches):
+            voltage = float(v_value)
+            current_label, current_value = current_matches[i] if i < len(current_matches) else (None, None)
+
+            # If current data is available, convert to mA
+            if current_label and current_value:
+                current_ma = float(current_value) * 1000  # Convert A to mA
+                readings[v_label] = {"voltage": voltage, "current_ma": current_ma}
+            else:
+                readings[v_label] = {"voltage": voltage, "current_ma": None}
+
+        return readings, None
+    except Exception as e:
+        return None, f"ERROR: {str(e)}"
+
+def main():
+    readings, error = get_adc_readings()
+
+    # Print Checkmk plugin format
+    print(f"<<<rpi_current:sep(0)>>>")
+
+    if error:
+        print(f"0 {error}")
+        return
+
+    if not readings:
+        print("0 ERROR: No ADC data found.")
+        return
+
+    # Print all voltage and current pairs
+    for v_label, data in readings.items():
+        voltage = data['voltage']
+        current_ma = data['current_ma']
+
+        if current_ma is not None:
+            print(f"0 {v_label}: Voltage: {voltage:.2f} V, Current: {current_ma:.2f} mA")
+        else:
+            print(f"0 {v_label}: Voltage: {voltage:.2f} V, Current: N/A")
+
+if __name__ == "__main__":
+    main()
